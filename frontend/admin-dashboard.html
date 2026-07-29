@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Yönetici Paneli — Kryptex</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+<nav>
+  <div class="logo"><div class="logo-mark"></div>Kryptex <span style="color:var(--text-dim); font-size:0.75rem; font-weight:500; margin-left:4px;">Yönetici</span></div>
+  <div class="nav-right">
+    <span id="who">Yükleniyor...</span>
+    <a href="#" onclick="logout(); return false;" class="btn btn-ghost">Çıkış Yap</a>
+  </div>
+</nav>
+
+<div class="wrap">
+  <div class="page-head">
+    <div>
+      <h1>Yönetici Paneli</h1>
+      <p>Yeni bayi hesapları oluştur; her bayi kendi "Giriş Yap" ekranından kendi kullanıcılarını yönetir.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Yeni Bayi Oluştur</h2>
+    <div id="create-msg"></div>
+    <form id="create-form" class="form-grid">
+      <label>Kullanıcı adı
+        <input type="text" name="username" required minlength="3" placeholder="bayi-ahmet">
+      </label>
+      <label>Şifre
+        <input type="password" name="password" required minlength="6" placeholder="en az 6 karakter">
+      </label>
+      <label>Görünen ad (opsiyonel)
+        <input type="text" name="display_name" placeholder="Ahmet VPN">
+      </label>
+      <label>Plan (opsiyonel)
+        <input type="text" name="plan" placeholder="Growth">
+      </label>
+      <label style="grid-column:1/-1">Not (opsiyonel)
+        <input type="text" name="note" placeholder="ör. 01.08.2026 tarihinde ödeme yaptı">
+      </label>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Bayi Oluştur</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>Bayiler</h2>
+    <table>
+      <thead>
+        <tr><th>Kullanıcı adı</th><th>Görünen ad</th><th>Plan</th><th>Not</th><th>Oluşturulma</th><th></th></tr>
+      </thead>
+      <tbody id="resellers-body">
+        <tr class="empty-row"><td colspan="6">Yükleniyor...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+  const whoEl = document.getElementById('who');
+  const createForm = document.getElementById('create-form');
+  const createMsg = document.getElementById('create-msg');
+  const resellersBody = document.getElementById('resellers-body');
+
+  async function init() {
+    try {
+      const me = await apiFetch('/api/auth/me');
+      if (!me.is_sudo) { window.location.href = 'reseller-dashboard.html'; return; }
+      whoEl.textContent = me.username;
+    } catch { return; }
+
+    await loadResellers();
+  }
+
+  async function loadResellers() {
+    try {
+      const resellers = await apiFetch('/api/resellers');
+      if (!resellers.length) {
+        resellersBody.innerHTML = '<tr class="empty-row"><td colspan="6">Henüz bayi yok. Yukarıdan ilk bayini oluştur.</td></tr>';
+        return;
+      }
+      resellersBody.innerHTML = resellers.map(r => `
+        <tr>
+          <td>${r.username}</td>
+          <td>${r.display_name || '—'}</td>
+          <td>${r.plan || '—'}</td>
+          <td>${r.note || '—'}</td>
+          <td>${r.created_at || '—'}</td>
+          <td><button class="btn btn-danger" onclick="deleteReseller('${r.username}')">Sil</button></td>
+        </tr>
+      `).join('');
+    } catch (err) {
+      resellersBody.innerHTML = `<tr class="empty-row"><td colspan="6">${err.message}</td></tr>`;
+    }
+  }
+
+  async function deleteReseller(username) {
+    if (!confirm(`${username} bayisini ve panel erişimini silmek istediğine emin misin?`)) return;
+    try {
+      await apiFetch(`/api/resellers/${encodeURIComponent(username)}`, { method: 'DELETE' });
+      await loadResellers();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  createForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    createMsg.innerHTML = '';
+    const fd = new FormData(createForm);
+    const submitBtn = createForm.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+
+    try {
+      await apiFetch('/api/resellers', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          username: fd.get('username'),
+          password: fd.get('password'),
+          display_name: fd.get('display_name') || '',
+          plan: fd.get('plan') || '',
+          note: fd.get('note') || '',
+        }),
+      });
+      createMsg.innerHTML = '<div class="msg-box success">Bayi oluşturuldu. Kullanıcı adı ve şifreyi bayiye ilet.</div>';
+      createForm.reset();
+      await loadResellers();
+    } catch (err) {
+      createMsg.innerHTML = `<div class="msg-box error">${err.message}</div>`;
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  init();
+</script>
+</body>
+</html>

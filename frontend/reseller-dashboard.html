@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Bayi Paneli — Kryptex</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+<nav>
+  <div class="logo"><div class="logo-mark"></div>Kryptex</div>
+  <div class="nav-right">
+    <span id="who">Yükleniyor...</span>
+    <a href="#" onclick="logout(); return false;" class="btn btn-ghost">Çıkış Yap</a>
+  </div>
+</nav>
+
+<div class="wrap">
+  <div class="page-head">
+    <div>
+      <h1>Bayi Paneli</h1>
+      <p>Kendi müşterilerini yönet: yeni VPN hesabı oluştur, kullanım durumunu takip et.</p>
+    </div>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat-card"><div class="num" id="stat-total">—</div><div class="label">Toplam Kullanıcı</div></div>
+    <div class="stat-card"><div class="num" id="stat-active">—</div><div class="label">Aktif Kullanıcı</div></div>
+    <div class="stat-card"><div class="num" id="stat-traffic">—</div><div class="label">Toplam Kullanılan Trafik</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Yeni Kullanıcı Oluştur</h2>
+    <div id="create-msg"></div>
+    <form id="create-form" class="form-grid">
+      <label>Kullanıcı adı
+        <input type="text" name="username" required minlength="3" placeholder="ornek-musteri1">
+      </label>
+      <label>Veri limiti (GB)
+        <input type="number" name="data_limit_gb" required min="1" step="1" value="30">
+      </label>
+      <label>Süre (gün)
+        <input type="number" name="expire_days" required min="1" step="1" value="30">
+      </label>
+      <label>Grup
+        <select name="group_id" id="group-select"></select>
+      </label>
+      <label>Not (opsiyonel)
+        <input type="text" name="note" placeholder="ör. Aylık paket">
+      </label>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Kullanıcı Oluştur</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>Kullanıcılarım</h2>
+    <table>
+      <thead>
+        <tr><th>Kullanıcı adı</th><th>Durum</th><th>Veri Limiti</th><th>Kullanılan</th><th>Bitiş</th><th>Not</th><th></th></tr>
+      </thead>
+      <tbody id="users-body">
+        <tr class="empty-row"><td colspan="7">Yükleniyor...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+  const whoEl = document.getElementById('who');
+  const groupSelect = document.getElementById('group-select');
+  const createForm = document.getElementById('create-form');
+  const createMsg = document.getElementById('create-msg');
+  const usersBody = document.getElementById('users-body');
+
+  async function init() {
+    try {
+      const me = await apiFetch('/api/auth/me');
+      if (me.is_sudo) { window.location.href = 'admin-dashboard.html'; return; }
+      whoEl.textContent = me.username;
+    } catch { return; }
+
+    await Promise.all([loadGroups(), loadSummary(), loadUsers()]);
+  }
+
+  async function loadGroups() {
+    try {
+      const groups = await apiFetch('/api/users/groups');
+      groupSelect.innerHTML = groups.map(g => `<option value="${g.id}">${g.name}</option>`).join('')
+        || '<option value="1">Varsayılan</option>';
+    } catch {
+      groupSelect.innerHTML = '<option value="1">Varsayılan</option>';
+    }
+  }
+
+  async function loadSummary() {
+    try {
+      const s = await apiFetch('/api/users/summary');
+      document.getElementById('stat-total').textContent = s.total_users;
+      document.getElementById('stat-active').textContent = s.active_users;
+      document.getElementById('stat-traffic').textContent = formatBytes(s.total_used_bytes);
+    } catch {}
+  }
+
+  async function loadUsers() {
+    try {
+      const users = await apiFetch('/api/users');
+      if (!users.length) {
+        usersBody.innerHTML = '<tr class="empty-row"><td colspan="7">Henüz kullanıcı yok. Yukarıdan ilk kullanıcını oluştur.</td></tr>';
+        return;
+      }
+      usersBody.innerHTML = users.map(u => `
+        <tr>
+          <td>${u.username}</td>
+          <td><span class="badge ${String(u.status).includes('active') ? 'active' : 'disabled'}">${u.status}</span></td>
+          <td>${formatBytes(u.data_limit)}</td>
+          <td>${formatBytes(u.used_traffic)}</td>
+          <td>${formatExpire(u.expire)}</td>
+          <td>${u.note || '—'}</td>
+          <td><button class="btn btn-danger" onclick="deleteUser('${u.username}')">Sil</button></td>
+        </tr>
+      `).join('');
+    } catch (err) {
+      usersBody.innerHTML = `<tr class="empty-row"><td colspan="7">${err.message}</td></tr>`;
+    }
+  }
+
+  async function deleteUser(username) {
+    if (!confirm(`${username} kullanıcısını silmek istediğine emin misin?`)) return;
+    try {
+      await apiFetch(`/api/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+      await Promise.all([loadSummary(), loadUsers()]);
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  createForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    createMsg.innerHTML = '';
+    const fd = new FormData(createForm);
+    const submitBtn = createForm.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+
+    try {
+      await apiFetch('/api/users', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          username: fd.get('username'),
+          data_limit_gb: parseFloat(fd.get('data_limit_gb')),
+          expire_days: parseInt(fd.get('expire_days'), 10),
+          note: fd.get('note') || '',
+          group_ids: [parseInt(fd.get('group_id'), 10)],
+        }),
+      });
+      createMsg.innerHTML = '<div class="msg-box success">Kullanıcı oluşturuldu.</div>';
+      createForm.reset();
+      await Promise.all([loadSummary(), loadUsers()]);
+    } catch (err) {
+      createMsg.innerHTML = `<div class="msg-box error">${err.message}</div>`;
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  init();
+</script>
+</body>
+</html>

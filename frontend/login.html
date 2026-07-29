@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Giriş Yap — Kryptex</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="auth.css">
+</head>
+<body>
+  <div class="auth-wrap">
+    <a href="index.html" class="back-link">← Ana sayfa</a>
+    <div class="auth-card">
+      <div class="logo"><div class="logo-mark"></div>Kryptex</div>
+      <h1>Bayi Girişi</h1>
+      <p class="sub">Panelinden aldığın kullanıcı adı ve şifre ile giriş yap.</p>
+
+      <form id="login-form">
+        <label>Kullanıcı adı
+          <input type="text" name="username" autocomplete="username" required>
+        </label>
+        <label>Şifre
+          <input type="password" name="password" autocomplete="current-password" required>
+        </label>
+        <div id="error-box" class="error-box" hidden></div>
+        <button type="submit" class="btn btn-primary">Giriş Yap</button>
+      </form>
+
+      <a href="admin-login.html" class="admin-link">Yönetici Girişi</a>
+    </div>
+  </div>
+
+<script>
+  const form = document.getElementById('login-form');
+  const errorBox = document.getElementById('error-box');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorBox.hidden = true;
+    const fd = new FormData(form);
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Giriş yapılıyor...';
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'include',
+        body: JSON.stringify({
+          username: fd.get('username'),
+          password: fd.get('password'),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Giriş başarısız');
+
+      window.location.href = data.is_sudo ? 'admin-dashboard.html' : 'reseller-dashboard.html';
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.hidden = false;
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Giriş Yap';
+    }
+  });
+</script>
+</body>
+</html>
