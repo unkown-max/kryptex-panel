@@ -27,17 +27,23 @@ async def list_resellers(
     meta = db.get_all_reseller_meta()
     result = []
     for admin in admins:
-        if admin.is_sudo:
+        admin_data = admin.model_dump() if hasattr(admin, "model_dump") else dict(admin)
+        admin_is_sudo = bool(admin_data.get("is_sudo")) or str(admin_data.get("role", "")).lower() in (
+            "sudo",
+            "owner",
+        )
+        if admin_is_sudo:
             continue  # don't list owner/sudo accounts as "resellers"
-        extra = meta.get(admin.username, {})
+        username = admin_data.get("username")
+        extra = meta.get(username, {})
         result.append(
             {
-                "username": admin.username,
+                "username": username,
                 "display_name": extra.get("display_name", ""),
                 "plan": extra.get("plan", ""),
                 "note": extra.get("note", ""),
                 "created_at": extra.get("created_at", ""),
-                "users_usage": getattr(admin, "used_traffic", None),
+                "users_usage": admin_data.get("used_traffic"),
             }
         )
     return result
