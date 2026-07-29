@@ -27,8 +27,17 @@ async def login(payload: LoginPayload, response: Response, api: PasarguardAPI = 
     except httpx.RequestError:
         raise HTTPException(status_code=502, detail="PasarGuard panele ulaşılamadı")
 
+    # Different PasarGuard/client versions expose this differently: some have a plain
+    # `is_sudo` boolean, newer ones use a `role` field (e.g. "owner"/"sudo"/"operator").
+    # Read it defensively so we don't crash on a version we haven't seen yet.
+    admin_data = admin.model_dump() if hasattr(admin, "model_dump") else dict(admin)
+    is_sudo = bool(admin_data.get("is_sudo")) or str(admin_data.get("role", "")).lower() in (
+        "sudo",
+        "owner",
+    )
+
     session_id = create_session(
-        username=admin.username, token=token.access_token, is_sudo=bool(admin.is_sudo)
+        username=admin_data.get("username", payload.username), token=token.access_token, is_sudo=is_sudo
     )
     response.set_cookie(
         key=COOKIE_NAME,
@@ -39,7 +48,7 @@ async def login(payload: LoginPayload, response: Response, api: PasarguardAPI = 
         max_age=SESSION_TTL_SECONDS,
         path="/",
     )
-    return {"ok": True, "username": admin.username, "is_sudo": bool(admin.is_sudo)}
+    return {"ok": True, "username": admin_data.get("username", payload.username), "is_sudo": is_sudo}
 
 
 @router.post("/logout")
